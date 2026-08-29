@@ -8,6 +8,16 @@ from rich import print
 from rich import console
 from rich.prompt import Prompt
 
+from faster_whisper import WhisperModel
+
+import httpx
+import os
+from dotenv import load_dotenv
+
+model_size = "base"
+load_dotenv()
+model = WhisperModel(model_size, device="cpu", compute_type="int8")
+
 con = console.Console()
 
 # Speech-to-text engines want 16kHz mono PCM. Recording anything else just
@@ -70,15 +80,42 @@ def record_to_wav(file_path: Path):
     con.print(f"Saved [bold]{file_path}[/bold] ({duration:.1f}s, {SAMPLE_RATE}Hz mono)")
     return file_path
 
+def sendingToAPI(formatted_data, transcription_language):
+    api_key = os.getenv("API_KEY")
+    try:
+        headers = {
+            "x-api-key": api_key,
+            "anthropic-version": "2023-06-01",
+            "content-type": "application/json"
+        }
+        payload = {
+            "model": "claude-haiku-4-5-20251001",
+            "max_tokens": 1000,
+            "messages": [
+                {
+                    "role" : "user", "content" : [{text} for text in formatted_data]
+                },
+                {
+                    "type" : "text", "text" : "What is the audio file about?"
+                }
+            ]
+        }
+        print(payload)
+        with httpx.Client() as client:
+            api_response = client.post("https://api.anthropic.com/v1/messages", headers=headers, json=payload)
+            respones_json = api_response.json()
+            print(respones_json)
+    except Exception as er:
+        print(er)
 
 def transcribe(wav_path: Path):
     # TODO: this is yours to build.
-    # The Anthropic Messages API does not take audio, so this needs a speech
-    # engine of its own: faster-whisper or openai-whisper running locally, or
-    # a hosted speech-to-text API. Return the transcript as a string, then
-    # send it to Claude the same way sendingToAi does in main.py.
-    raise NotImplementedError
-
+    segments, info = model.transcribe(wav_path, beam_size=5)
+    formating_data = []
+    for segment in segments:
+        formating_data.append(segment.text)
+    transcription_language = info.language
+    sendingToAPI(formating_data, transcription_language)
 
 def main():
     con.log("Starting the recorder")

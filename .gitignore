@@ -3,3 +3,5 @@
 .env
 recordings
 __pycache__
+/recordings
+/.claude
